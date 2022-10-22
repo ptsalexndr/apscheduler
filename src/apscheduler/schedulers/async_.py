@@ -635,6 +635,7 @@ class AsyncScheduler:
                             jitter=jitter,
                             start_deadline=schedule.next_deadline,
                             tags=schedule.tags,
+                            result_expiration_time=timedelta(minutes=15),
                         )
                         await self.data_store.add_job(job)
 
