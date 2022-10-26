@@ -692,7 +692,7 @@ class AsyncScheduler:
             while self._state is RunState.started:
                 limit = self.max_concurrent_jobs - len(self._running_jobs)
                 if limit > 0:
-                    jobs = await self.data_store.acquire_jobs(self.identity, limit, self.ignored_tasks)
+                    jobs = await self.data_store.acquire_jobs(self.identity, limit, self._ignored_tasks)
                     for job in jobs:
                         try:
                             task = await self.data_store.get_task(job.task_id)
@@ -704,7 +704,7 @@ class AsyncScheduler:
                             self.logger.error("Could not import python code for task with id %s. "
                                               "These tasks will be skipped from now on until the "
                                               "service is restarted.", job.task_id)
-                            self.ignored_tasks.append(job.task_id)
+                            self._ignored_tasks.append(job.task_id)
                 await wakeup_event.wait()
                 wakeup_event = anyio.Event()
 
