@@ -399,20 +399,25 @@ class MongoDBDataStore(BaseExternalDataStore):
 
         return jobs
 
-    async def acquire_jobs(self, worker_id: str, limit: int | None = None) -> list[Job]:
+    async def acquire_jobs(self,
+                           worker_id: str,
+                           limit: int | None = None,
+                           ignored_tasks: list | None = None) -> list[Job]:
         async for attempt in self._retry():
             with attempt, self.client.start_session() as session:
-                cursor = self._jobs.find(
-                    {
-                        "$or": [
-                            {"acquired_until": {"$exists": False}},
-                            {"acquired_until": {"$lt": datetime.now(timezone.utc)}},
-                        ]
-                    },
-                    sort=[("created_at", ASCENDING)],
-                    limit=limit,
-                    session=session,
-                )
+                query = {
+                    "$or": [
+                        {"acquired_until": {"$exists": False}},
+                        {"acquired_until": {"$lt": datetime.now(timezone.utc)}},
+                    ]
+                }
+                if ignored_tasks is not None:
+                    query = {"$and": [query, {"task_id": {"$nin": ignored_tasks}}]}
+                cursor = self._jobs.find(query,
+                                         sort=[("created_at", ASCENDING)],
+                                         limit=limit,
+                                         session=session,
+                                         )
                 documents = list(cursor)
 
                 # Retrieve the limits

@@ -86,6 +86,8 @@ class AsyncScheduler:
     default_job_executor: str | None = attrs.field(default=None)
     logger: Logger | None = attrs.field(default=getLogger(__name__))
 
+    _ignored_tasks: list = []
+
     _state: RunState = attrs.field(init=False, default=RunState.stopped)
     _services_task_group: TaskGroup | None = attrs.field(init=False, default=None)
     _exit_stack: AsyncExitStack = attrs.field(init=False, factory=AsyncExitStack)
@@ -126,10 +128,10 @@ class AsyncScheduler:
         return self
 
     async def __aexit__(
-        self,
-        exc_type: type[BaseException],
-        exc_val: BaseException,
-        exc_tb: TracebackType,
+            self,
+            exc_type: type[BaseException],
+            exc_val: BaseException,
+            exc_tb: TracebackType,
     ) -> None:
         await self.stop()
         await self._exit_stack.__aexit__(exc_type, exc_val, exc_tb)
@@ -161,12 +163,12 @@ class AsyncScheduler:
         return self._state
 
     def subscribe(
-        self,
-        callback: Callable[[Event], Any],
-        event_types: type[Event] | Iterable[type[Event]] | None = None,
-        *,
-        one_shot: bool = False,
-        is_async: bool = True,
+            self,
+            callback: Callable[[Event], Any],
+            event_types: type[Event] | Iterable[type[Event]] | None = None,
+            *,
+            one_shot: bool = False,
+            is_async: bool = True,
     ) -> Subscription:
         """
         Subscribe to events.
@@ -193,7 +195,7 @@ class AsyncScheduler:
         )
 
     async def get_next_event(
-        self, event_types: type[Event] | Iterable[type[Event]]
+            self, event_types: type[Event] | Iterable[type[Event]]
     ) -> Event:
         """
         Wait until the next event matching one of the given types arrives.
@@ -214,19 +216,19 @@ class AsyncScheduler:
             return received_event
 
     async def add_schedule(
-        self,
-        func_or_task_id: str | Callable,
-        trigger: Trigger,
-        *,
-        id: str | None = None,
-        args: Iterable | None = None,
-        kwargs: Mapping[str, Any] | None = None,
-        job_executor: str | None = None,
-        coalesce: CoalescePolicy = CoalescePolicy.latest,
-        misfire_grace_time: float | timedelta | None = None,
-        max_jitter: float | timedelta | None = None,
-        tags: Iterable[str] | None = None,
-        conflict_policy: ConflictPolicy = ConflictPolicy.do_nothing,
+            self,
+            func_or_task_id: str | Callable,
+            trigger: Trigger,
+            *,
+            id: str | None = None,
+            args: Iterable | None = None,
+            kwargs: Mapping[str, Any] | None = None,
+            job_executor: str | None = None,
+            coalesce: CoalescePolicy = CoalescePolicy.latest,
+            misfire_grace_time: float | timedelta | None = None,
+            max_jitter: float | timedelta | None = None,
+            tags: Iterable[str] | None = None,
+            conflict_policy: ConflictPolicy = ConflictPolicy.do_nothing,
     ) -> str:
         """
         Schedule a task to be run one or more times in the future.
@@ -327,14 +329,14 @@ class AsyncScheduler:
         await self.data_store.remove_schedules({id})
 
     async def add_job(
-        self,
-        func_or_task_id: str | Callable,
-        *,
-        args: Iterable | None = None,
-        kwargs: Mapping[str, Any] | None = None,
-        job_executor: str | None = None,
-        tags: Iterable[str] | None = None,
-        result_expiration_time: timedelta | float = 0,
+            self,
+            func_or_task_id: str | Callable,
+            *,
+            args: Iterable | None = None,
+            kwargs: Mapping[str, Any] | None = None,
+            job_executor: str | None = None,
+            tags: Iterable[str] | None = None,
+            result_expiration_time: timedelta | float = 0,
     ) -> UUID:
         """
         Add a job to the data store.
@@ -402,13 +404,13 @@ class AsyncScheduler:
         return await self.data_store.get_job_result(job_id)
 
     async def run_job(
-        self,
-        func_or_task_id: str | Callable,
-        *,
-        args: Iterable | None = None,
-        kwargs: Mapping[str, Any] | None = None,
-        job_executor: str | None = None,
-        tags: Iterable[str] | None = (),
+            self,
+            func_or_task_id: str | Callable,
+            *,
+            args: Iterable | None = None,
+            kwargs: Mapping[str, Any] | None = None,
+            job_executor: str | None = None,
+            tags: Iterable[str] | None = (),
     ) -> Any:
         """
         Convenience method to add a job and then return its result.
@@ -484,7 +486,7 @@ class AsyncScheduler:
         await self._services_task_group.start(self.run_until_stopped)
 
     async def run_until_stopped(
-        self, *, task_status: TaskStatus = TASK_STATUS_IGNORED
+            self, *, task_status: TaskStatus = TASK_STATUS_IGNORED
     ) -> None:
         """Run the scheduler until explicitly stopped."""
         if self._state is not RunState.stopped:
@@ -547,7 +549,7 @@ class AsyncScheduler:
         async def schedule_added_or_modified(event: Event) -> None:
             event_ = cast("ScheduleAdded | ScheduleUpdated", event)
             if not wakeup_deadline or (
-                event_.next_fire_time and event_.next_fire_time < wakeup_deadline
+                    event_.next_fire_time and event_.next_fire_time < wakeup_deadline
             ):
                 self.logger.debug(
                     "Detected a %s event – waking up the scheduler to process "
@@ -616,9 +618,9 @@ class AsyncScheduler:
                                     [
                                         max_jitter,
                                         (
-                                            next_fire_time
-                                            - fire_time
-                                            - _microsecond_delta
+                                                next_fire_time
+                                                - fire_time
+                                                - _microsecond_delta
                                         ).total_seconds(),
                                     ]
                                 )
@@ -650,7 +652,7 @@ class AsyncScheduler:
                     wakeup_deadline = await self.data_store.get_next_schedule_run_time()
                     if wakeup_deadline:
                         wait_time = (
-                            wakeup_deadline - datetime.now(timezone.utc)
+                                wakeup_deadline - datetime.now(timezone.utc)
                         ).total_seconds()
                         self.logger.debug(
                             "Sleeping %.3f seconds until the next fire time (%s)",
@@ -690,14 +692,19 @@ class AsyncScheduler:
             while self._state is RunState.started:
                 limit = self.max_concurrent_jobs - len(self._running_jobs)
                 if limit > 0:
-                    jobs = await self.data_store.acquire_jobs(self.identity, limit)
+                    jobs = await self.data_store.acquire_jobs(self.identity, limit, self.ignored_tasks)
                     for job in jobs:
-                        task = await self.data_store.get_task(job.task_id)
-                        self._running_jobs.add(job.id)
-                        task_group.start_soon(
-                            self._run_job, job, task.func, task.executor
-                        )
-
+                        try:
+                            task = await self.data_store.get_task(job.task_id)
+                            self._running_jobs.add(job.id)
+                            task_group.start_soon(
+                                self._run_job, job, task.func, task.executor
+                            )
+                        except LookupError:
+                            self.logger.error("Could not import python code for task with id %s. "
+                                              "These tasks will be skipped from now on until the "
+                                              "service is restarted.", job.task_id)
+                            self.ignored_tasks.append(job.task_id)
                 await wakeup_event.wait()
                 wakeup_event = anyio.Event()
 

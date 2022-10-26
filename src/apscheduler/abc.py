@@ -117,12 +117,12 @@ class EventBroker(metaclass=ABCMeta):
 
     @abstractmethod
     def subscribe(
-        self,
-        callback: Callable[[Event], Any],
-        event_types: Iterable[type[Event]] | None = None,
-        *,
-        is_async: bool = True,
-        one_shot: bool = False,
+            self,
+            callback: Callable[[Event], Any],
+            event_types: Iterable[type[Event]] | None = None,
+            *,
+            is_async: bool = True,
+            one_shot: bool = False,
     ) -> Subscription:
         """
         Subscribe to events from this event broker.
@@ -143,7 +143,7 @@ class DataStore(metaclass=ABCMeta):
 
     @abstractmethod
     async def start(
-        self, exit_stack: AsyncExitStack, event_broker: EventBroker
+            self, exit_stack: AsyncExitStack, event_broker: EventBroker
     ) -> None:
         """
         Start the event broker.
@@ -204,7 +204,7 @@ class DataStore(metaclass=ABCMeta):
 
     @abstractmethod
     async def add_schedule(
-        self, schedule: Schedule, conflict_policy: ConflictPolicy
+            self, schedule: Schedule, conflict_policy: ConflictPolicy
     ) -> None:
         """
         Add or update the given schedule in the data store.
@@ -237,7 +237,7 @@ class DataStore(metaclass=ABCMeta):
 
     @abstractmethod
     async def release_schedules(
-        self, scheduler_id: str, schedules: list[Schedule]
+            self, scheduler_id: str, schedules: list[Schedule]
     ) -> None:
         """
         Release the claims on the given schedules and update them on the store.
@@ -272,7 +272,10 @@ class DataStore(metaclass=ABCMeta):
         """
 
     @abstractmethod
-    async def acquire_jobs(self, worker_id: str, limit: int | None = None) -> list[Job]:
+    async def acquire_jobs(self,
+                           worker_id: str,
+                           limit: int | None = None,
+                           ignored_tasks: list | None = None) -> list[Job]:
         """
         Acquire unclaimed jobs for execution.
 
@@ -281,12 +284,13 @@ class DataStore(metaclass=ABCMeta):
 
         :param worker_id: unique identifier of the worker
         :param limit: maximum number of jobs to claim and return
+        :param ignored_tasks: List of task id's to ignore when fetching jobs
         :return: the list of claimed jobs
         """
 
     @abstractmethod
     async def release_job(
-        self, worker_id: str, task_id: str, result: JobResult
+            self, worker_id: str, task_id: str, result: JobResult
     ) -> None:
         """
         Release the claim on the given job and record the result.
