@@ -125,7 +125,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
         self, exit_stack: AsyncExitStack, event_broker: EventBroker
     ) -> None:
         await super().start(exit_stack, event_broker)
-        server_info = await to_thread.run_sync(self.client.server_info)
+        server_info = await self.client.server_info()
         if server_info["versionArray"] < [4, 0]:
             raise RuntimeError(
                 f"MongoDB server must be at least v4.0; current version = "
