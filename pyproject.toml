@@ -39,6 +39,10 @@ dynamic = ["version"]
 asyncpg = ["asyncpg >= 0.20"]
 cbor = ["cbor2 >= 5.0"]
 mongodb = ["pymongo >= 4"]
+asyncmongodb = [
+    "pymongo >= 4",
+    "motor >= 3.1.1"
+]
 mqtt = ["paho-mqtt >= 1.5"]
 redis = ["redis >= 4.0"]
 sqlalchemy = [
