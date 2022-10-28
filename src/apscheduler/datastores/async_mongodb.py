@@ -107,7 +107,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
         return cls(client, **options)  # noqa
 
     async def _initialize(self) -> None:
-        async with await self.client.start_session() as session:
+        async with self.client.start_session() as session:
             if self.start_from_scratch:
                 await self._tasks.delete_many({}, session=session)
                 await self._schedules.delete_many({}, session=session)
@@ -240,7 +240,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
     async def remove_schedules(self, ids: Iterable[str]) -> None:
         filters = {"_id": {"$in": list(ids)}} if ids is not None else {}
         async for attempt in self._retry():
-            async with attempt, await self.client.start_session() as session:
+            async with attempt, self.client.start_session() as session:
                 ids = []
                 async for doc in self._schedules.find(filters, projection=["_id"], session=session):
                     ids.append(doc["_id"])
@@ -252,7 +252,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
 
     async def acquire_schedules(self, scheduler_id: str, limit: int) -> list[Schedule]:
         async for attempt in self._retry():
-            async with attempt, await self.client.start_session() as session:
+            async with attempt, self.client.start_session() as session:
                 schedules: list[Schedule] = []
                 cursor = (
                     self._schedules.find(
@@ -329,7 +329,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
 
             if requests:
                 async for attempt in self._retry():
-                    async with attempt, await self.client.start_session() as session:
+                    async with attempt, self.client.start_session() as session:
                         await self._schedules.bulk_write(
                             requests, ordered=False, session=session
                         )
@@ -396,7 +396,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
                            limit: int | None = None,
                            ignored_tasks: list | None = None) -> list[Job]:
         async for attempt in self._retry():
-            async with attempt, await self.client.start_session() as session:
+            async with attempt, self.client.start_session() as session:
                 query = {
                     "$or": [
                         {"acquired_until": {"$exists": False}},
@@ -474,7 +474,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
         self, worker_id: str, task_id: str, result: JobResult
     ) -> None:
         async for attempt in self._retry():
-            async with attempt, await self.client.start_session() as session:
+            async with attempt, self.client.start_session() as session:
                 # Record the job result
                 if result.expires_at > result.finished_at:
                     document = result.marshal(self.serializer)
