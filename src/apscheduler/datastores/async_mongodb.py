@@ -107,7 +107,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
         return cls(client, **options)  # noqa
 
     async def _initialize(self) -> None:
-        async with self.client.start_session() as session:
+        async with await self.client.start_session() as session:
             if self.start_from_scratch:
                 await self._tasks.delete_many({}, session=session)
                 await self._schedules.delete_many({}, session=session)
@@ -240,52 +240,54 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
     async def remove_schedules(self, ids: Iterable[str]) -> None:
         filters = {"_id": {"$in": list(ids)}} if ids is not None else {}
         async for attempt in self._retry():
-            async with attempt, self.client.start_session() as session:
-                ids = []
-                async for doc in self._schedules.find(filters, projection=["_id"], session=session):
-                    ids.append(doc["_id"])
-                if ids:
-                    await self._schedules.delete_many(filters, session=session)
+            with attempt:
+                async with await self.client.start_session() as session:
+                    ids = []
+                    async for doc in self._schedules.find(filters, projection=["_id"], session=session):
+                        ids.append(doc["_id"])
+                    if ids:
+                        await self._schedules.delete_many(filters, session=session)
 
         for schedule_id in ids:
             await self._event_broker.publish(ScheduleRemoved(schedule_id=schedule_id))
 
     async def acquire_schedules(self, scheduler_id: str, limit: int) -> list[Schedule]:
         async for attempt in self._retry():
-            async with attempt, self.client.start_session() as session:
-                schedules: list[Schedule] = []
-                cursor = (
-                    self._schedules.find(
-                        {
-                            "next_fire_time": {"$ne": None},
-                            "$or": [
-                                {"acquired_until": {"$exists": False}},
-                                {"acquired_until": {"$lt": datetime.now(timezone.utc)}},
-                            ],
-                        },
-                        session=session,
+            with attempt:
+                async with await self.client.start_session() as session:
+                    schedules: list[Schedule] = []
+                    cursor = (
+                        self._schedules.find(
+                            {
+                                "next_fire_time": {"$ne": None},
+                                "$or": [
+                                    {"acquired_until": {"$exists": False}},
+                                    {"acquired_until": {"$lt": datetime.now(timezone.utc)}},
+                                ],
+                            },
+                            session=session,
+                        )
+                        .sort("next_fire_time")
+                        .limit(limit)
                     )
-                    .sort("next_fire_time")
-                    .limit(limit)
-                )
-                async for document in cursor:
-                    document["id"] = document.pop("_id")
-                    schedule = Schedule.unmarshal(self.serializer, document)
-                    schedules.append(schedule)
+                    async for document in cursor:
+                        document["id"] = document.pop("_id")
+                        schedule = Schedule.unmarshal(self.serializer, document)
+                        schedules.append(schedule)
 
-                if schedules:
-                    now = datetime.now(timezone.utc)
-                    acquired_until = datetime.fromtimestamp(
-                        now.timestamp() + self.lock_expiration_delay, now.tzinfo
-                    )
-                    filters = {"_id": {"$in": [schedule.id for schedule in schedules]}}
-                    update = {
-                        "$set": {
-                            "acquired_by": scheduler_id,
-                            "acquired_until": acquired_until,
+                    if schedules:
+                        now = datetime.now(timezone.utc)
+                        acquired_until = datetime.fromtimestamp(
+                            now.timestamp() + self.lock_expiration_delay, now.tzinfo
+                        )
+                        filters = {"_id": {"$in": [schedule.id for schedule in schedules]}}
+                        update = {
+                            "$set": {
+                                "acquired_by": scheduler_id,
+                                "acquired_until": acquired_until,
+                            }
                         }
-                    }
-                    await self._schedules.update_many(filters, update, session=session)
+                        await self._schedules.update_many(filters, update, session=session)
 
         return schedules
 
@@ -329,10 +331,11 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
 
             if requests:
                 async for attempt in self._retry():
-                    async with attempt, self.client.start_session() as session:
-                        await self._schedules.bulk_write(
-                            requests, ordered=False, session=session
-                        )
+                    with attempt:
+                        async with await self.client.start_session() as session:
+                            await self._schedules.bulk_write(
+                                requests, ordered=False, session=session
+                            )
 
         for schedule_id, next_fire_time in updated_schedules:
             event = ScheduleUpdated(
@@ -396,71 +399,72 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
                            limit: int | None = None,
                            ignored_tasks: list | None = None) -> list[Job]:
         async for attempt in self._retry():
-            async with attempt, self.client.start_session() as session:
-                query = {
-                    "$or": [
-                        {"acquired_until": {"$exists": False}},
-                        {"acquired_until": {"$lt": datetime.now(timezone.utc)}},
-                    ]
-                }
-                if ignored_tasks is not None:
-                    query = {"$and": [query, {"task_id": {"$nin": ignored_tasks}}]}
-                documents = []
-                async for doc in await self._jobs.find(query,
-                                                       sort=[("created_at", ASCENDING)],
-                                                       limit=limit,
-                                                       session=session):
-                    documents.append(doc)
-
-                # Retrieve the limits
-                task_ids: set[str] = {document["task_id"] for document in documents}
-                task_limits = self._tasks.find(
-                    {"_id": {"$in": list(task_ids)}, "max_running_jobs": {"$ne": None}},
-                    projection=["max_running_jobs", "running_jobs"],
-                    session=session,
-                )
-                job_slots_left = {}
-                async for doc in task_limits:
-                    job_slots_left[doc["_id"]] = doc["max_running_jobs"] - doc["running_jobs"]
-
-                # Filter out jobs that don't have free slots
-                acquired_jobs: list[Job] = []
-                increments: dict[str, int] = defaultdict(lambda: 0)
-                for document in documents:
-                    document["id"] = document.pop("_id")
-                    job = Job.unmarshal(self.serializer, document)
-
-                    # Don't acquire the job if there are no free slots left
-                    slots_left = job_slots_left.get(job.task_id)
-                    if slots_left == 0:
-                        continue
-                    elif slots_left is not None:
-                        job_slots_left[job.task_id] -= 1
-
-                    acquired_jobs.append(job)
-                    increments[job.task_id] += 1
-
-                if acquired_jobs:
-                    now = datetime.now(timezone.utc)
-                    acquired_until = datetime.fromtimestamp(
-                        now.timestamp() + self.lock_expiration_delay, timezone.utc
-                    )
-                    filters = {"_id": {"$in": [job.id for job in acquired_jobs]}}
-                    update = {
-                        "$set": {
-                            "acquired_by": worker_id,
-                            "acquired_until": acquired_until,
-                        }
+            with attempt:
+                async with await self.client.start_session() as session:
+                    query = {
+                        "$or": [
+                            {"acquired_until": {"$exists": False}},
+                            {"acquired_until": {"$lt": datetime.now(timezone.utc)}},
+                        ]
                     }
-                    await self._jobs.update_many(filters, update, session=session)
+                    if ignored_tasks is not None:
+                        query = {"$and": [query, {"task_id": {"$nin": ignored_tasks}}]}
+                    documents = []
+                    async for doc in await self._jobs.find(query,
+                                                           sort=[("created_at", ASCENDING)],
+                                                           limit=limit,
+                                                           session=session):
+                        documents.append(doc)
 
-                    # Increment the running job counters on each task
-                    for task_id, increment in increments.items():
-                        await self._tasks.find_one_and_update(
-                            {"_id": task_id},
-                            {"$inc": {"running_jobs": increment}},
-                            session=session,
+                    # Retrieve the limits
+                    task_ids: set[str] = {document["task_id"] for document in documents}
+                    task_limits = self._tasks.find(
+                        {"_id": {"$in": list(task_ids)}, "max_running_jobs": {"$ne": None}},
+                        projection=["max_running_jobs", "running_jobs"],
+                        session=session,
+                    )
+                    job_slots_left = {}
+                    async for doc in task_limits:
+                        job_slots_left[doc["_id"]] = doc["max_running_jobs"] - doc["running_jobs"]
+
+                    # Filter out jobs that don't have free slots
+                    acquired_jobs: list[Job] = []
+                    increments: dict[str, int] = defaultdict(lambda: 0)
+                    for document in documents:
+                        document["id"] = document.pop("_id")
+                        job = Job.unmarshal(self.serializer, document)
+
+                        # Don't acquire the job if there are no free slots left
+                        slots_left = job_slots_left.get(job.task_id)
+                        if slots_left == 0:
+                            continue
+                        elif slots_left is not None:
+                            job_slots_left[job.task_id] -= 1
+
+                        acquired_jobs.append(job)
+                        increments[job.task_id] += 1
+
+                    if acquired_jobs:
+                        now = datetime.now(timezone.utc)
+                        acquired_until = datetime.fromtimestamp(
+                            now.timestamp() + self.lock_expiration_delay, timezone.utc
                         )
+                        filters = {"_id": {"$in": [job.id for job in acquired_jobs]}}
+                        update = {
+                            "$set": {
+                                "acquired_by": worker_id,
+                                "acquired_until": acquired_until,
+                            }
+                        }
+                        await self._jobs.update_many(filters, update, session=session)
+
+                        # Increment the running job counters on each task
+                        for task_id, increment in increments.items():
+                            await self._tasks.find_one_and_update(
+                                {"_id": task_id},
+                                {"$inc": {"running_jobs": increment}},
+                                session=session,
+                            )
 
         # Publish the appropriate events
         for job in acquired_jobs:
@@ -474,20 +478,21 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
         self, worker_id: str, task_id: str, result: JobResult
     ) -> None:
         async for attempt in self._retry():
-            async with attempt, self.client.start_session() as session:
-                # Record the job result
-                if result.expires_at > result.finished_at:
-                    document = result.marshal(self.serializer)
-                    document["_id"] = document.pop("job_id")
-                    await self._jobs_results.insert_one(document, session=session)
+            with attempt:
+                async with await self.client.start_session() as session:
+                    # Record the job result
+                    if result.expires_at > result.finished_at:
+                        document = result.marshal(self.serializer)
+                        document["_id"] = document.pop("job_id")
+                        await self._jobs_results.insert_one(document, session=session)
 
-                # Decrement the running jobs counter
-                await self._tasks.find_one_and_update(
-                    {"_id": task_id}, {"$inc": {"running_jobs": -1}}, session=session
-                )
+                    # Decrement the running jobs counter
+                    await self._tasks.find_one_and_update(
+                        {"_id": task_id}, {"$inc": {"running_jobs": -1}}, session=session
+                    )
 
-                # Delete the job
-                await self._jobs.delete_one({"_id": result.job_id}, session=session)
+                    # Delete the job
+                    await self._jobs.delete_one({"_id": result.job_id}, session=session)
 
     async def get_job_result(self, job_id: UUID) -> JobResult | None:
         async for attempt in self._retry():
