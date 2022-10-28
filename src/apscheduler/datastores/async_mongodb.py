@@ -410,10 +410,10 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
                     if ignored_tasks is not None:
                         query = {"$and": [query, {"task_id": {"$nin": ignored_tasks}}]}
                     documents = []
-                    async for doc in await self._jobs.find(query,
-                                                           sort=[("created_at", ASCENDING)],
-                                                           limit=limit,
-                                                           session=session):
+                    async for doc in self._jobs.find(query,
+                                                     sort=[("created_at", ASCENDING)],
+                                                     limit=limit,
+                                                     session=session):
                         documents.append(doc)
 
                     # Retrieve the limits
