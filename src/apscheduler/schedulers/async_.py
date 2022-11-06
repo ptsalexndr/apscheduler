@@ -647,7 +647,7 @@ class AsyncScheduler:
                                 start_deadline=schedule.next_deadline,
                                 tags=schedule.tags,
                                 result_expiration_time=timedelta(minutes=15),
-                                lock_expriation_delay=schedule.job_lock_expiration_delay
+                                lock_expiration_delay=schedule.job_lock_expiration_delay
                             )
                             await self.data_store.add_job(job)
                 finally:
