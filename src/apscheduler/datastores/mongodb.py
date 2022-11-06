@@ -264,7 +264,10 @@ class MongoDBDataStore(BaseExternalDataStore):
                 cursor = (
                     self._schedules.find(
                         {
-                            "next_fire_time": {"$ne": None},
+                            "$and": [
+                                {"next_fire_time": {"$ne": None}},
+                                {"next_fire_time": {"$lt": datetime.now(timezone.utc)}}
+                            ],
                             "$or": [
                                 {"acquired_until": {"$exists": False}},
                                 {"acquired_until": {"$lt": datetime.now(timezone.utc)}},
