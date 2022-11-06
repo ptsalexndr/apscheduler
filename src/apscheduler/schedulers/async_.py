@@ -338,6 +338,7 @@ class AsyncScheduler:
             job_executor: str | None = None,
             tags: Iterable[str] | None = None,
             result_expiration_time: timedelta | float = 0,
+            lock_expiration_delay: float | None = None
     ) -> UUID:
         """
         Add a job to the data store.
@@ -351,6 +352,7 @@ class AsyncScheduler:
         :param result_expiration_time: the minimum time (as seconds, or timedelta) to
             keep the result of the job available for fetching (the result won't be
             saved at all if that time is 0)
+        :param lock_expiration_delay: the minimum time a job will remain locked until it can be acquired again
         :return: the ID of the newly created job
 
         """
@@ -371,6 +373,7 @@ class AsyncScheduler:
             kwargs=kwargs or {},
             tags=tags or frozenset(),
             result_expiration_time=result_expiration_time,
+            lock_expiration_delay=lock_expiration_delay
         )
         await self.data_store.add_job(job)
         return job.id
@@ -412,6 +415,7 @@ class AsyncScheduler:
             kwargs: Mapping[str, Any] | None = None,
             job_executor: str | None = None,
             tags: Iterable[str] | None = (),
+            lock_expiration_delay: float | None = None
     ) -> Any:
         """
         Convenience method to add a job and then return its result.
@@ -424,6 +428,7 @@ class AsyncScheduler:
         :param kwargs: keyword arguments to be passed to the task function
         :param job_executor: name of the job executor to run the task with
         :param tags: strings that can be used to categorize and filter the job
+        :param lock_expiration_delay: the minimum time a job will remain locked until it can be acquired again
         :returns: the return value of the task function
 
         """
@@ -443,6 +448,8 @@ class AsyncScheduler:
                 job_executor=job_executor,
                 tags=tags,
                 result_expiration_time=timedelta(minutes=15),
+                lock_expiration_delay=lock_expiration_delay
+
             )
             await job_complete_event.wait()
 
@@ -640,6 +647,7 @@ class AsyncScheduler:
                                 start_deadline=schedule.next_deadline,
                                 tags=schedule.tags,
                                 result_expiration_time=timedelta(minutes=15),
+                                lock_expriation_delay=schedule.job_lock_expiration_delay
                             )
                             await self.data_store.add_job(job)
                 finally:

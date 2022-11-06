@@ -448,17 +448,17 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
 
                     if acquired_jobs:
                         now = datetime.now(timezone.utc)
-                        acquired_until = datetime.fromtimestamp(
-                            now.timestamp() + self.lock_expiration_delay, timezone.utc
-                        )
-                        filters = {"_id": {"$in": [job.id for job in acquired_jobs]}}
-                        update = {
-                            "$set": {
-                                "acquired_by": worker_id,
-                                "acquired_until": acquired_until,
-                            }
-                        }
-                        await self._jobs.update_many(filters, update, session=session)
+                        for job in acquired_jobs:
+                            lock_expiration_delay = job.lock_expiration_delay or self.lock_expiration_delay
+                            acquired_until = datetime.fromtimestamp(
+                                now.timestamp() + lock_expiration_delay, timezone.utc
+                            )
+
+                            await self._jobs.find_one_and_update(
+                                {"_id": job.id},
+                                {"$set": {"acquired_by": worker_id,
+                                          "acquired_until": acquired_until}},
+                                session=session)
 
                         # Increment the running job counters on each task
                         for task_id, increment in increments.items():

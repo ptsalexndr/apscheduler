@@ -118,6 +118,8 @@ class Schedule:
     acquired_by: str | None = attrs.field(eq=False, order=False, default=None)
     acquired_until: datetime | None = attrs.field(eq=False, order=False, default=None)
 
+    job_lock_expiration_delay: float | None = attrs.field(eq=False, order=False, default=None)
+
     def marshal(self, serializer: Serializer) -> dict[str, Any]:
         marshalled = attrs.asdict(self, value_serializer=serialize)
         marshalled["trigger"] = serializer.serialize(self.trigger)
@@ -199,6 +201,8 @@ class Job:
     started_at: datetime | None = attrs.field(eq=False, order=False, default=None)
     acquired_by: str | None = attrs.field(eq=False, order=False, default=None)
     acquired_until: datetime | None = attrs.field(eq=False, order=False, default=None)
+
+    lock_expiration_delay: float | None = attrs.field(eq=False, order=False, default=None)
 
     @property
     def original_scheduled_time(self) -> datetime | None:
