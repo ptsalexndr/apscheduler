@@ -498,7 +498,9 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
                     if delete_result.deleted_count > 0:
                         # Decrement the running jobs counter if job could be deleted
                         await self._tasks.find_one_and_update(
-                            {"_id": task_id}, {"$inc": {"running_jobs": -delete_result}}, session=session
+                            {"_id": task_id},
+                            {"$inc": {"running_jobs": -delete_result.deleted_count}},
+                            session=session
                         )
                     else:
                         logging.error("Could not delete job with id %s, as it was not "
