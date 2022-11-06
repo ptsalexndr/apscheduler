@@ -568,81 +568,82 @@ class AsyncScheduler:
 
             while self._state is RunState.started:
                 schedules = await self.data_store.acquire_schedules(self.identity, 100)
-                now = datetime.now(timezone.utc)
-                for schedule in schedules:
-                    # Calculate a next fire time for the schedule, if possible
-                    fire_times = [schedule.next_fire_time]
-                    calculate_next = schedule.trigger.next
-                    while True:
-                        try:
-                            fire_time = calculate_next()
-                        except Exception:
-                            self.logger.exception(
-                                "Error computing next fire time for schedule %r of "
-                                "task %r – removing schedule",
-                                schedule.id,
-                                schedule.task_id,
-                            )
-                            break
-
-                        # Stop if the calculated fire time is in the future
-                        if fire_time is None or fire_time > now:
-                            schedule.next_fire_time = fire_time
-                            break
-
-                        # Only keep all the fire times if coalesce policy = "all"
-                        if schedule.coalesce is CoalescePolicy.all:
-                            fire_times.append(fire_time)
-                        elif schedule.coalesce is CoalescePolicy.latest:
-                            fire_times[0] = fire_time
-
-                    # Add one or more jobs to the job queue
-                    max_jitter = (
-                        schedule.max_jitter.total_seconds()
-                        if schedule.max_jitter
-                        else 0
-                    )
-                    for i, fire_time in enumerate(fire_times):
-                        # Calculate a jitter if max_jitter > 0
-                        jitter = _zero_timedelta
-                        if max_jitter:
-                            if i + 1 < len(fire_times):
-                                next_fire_time = fire_times[i + 1]
-                            else:
-                                next_fire_time = schedule.next_fire_time
-
-                            if next_fire_time is not None:
-                                # Jitter must never be so high that it would cause a
-                                # fire time to equal or exceed the next fire time
-                                jitter_s = min(
-                                    [
-                                        max_jitter,
-                                        (
-                                                next_fire_time
-                                                - fire_time
-                                                - _microsecond_delta
-                                        ).total_seconds(),
-                                    ]
+                try:
+                    now = datetime.now(timezone.utc)
+                    for schedule in schedules:
+                        # Calculate a next fire time for the schedule, if possible
+                        fire_times = [schedule.next_fire_time]
+                        calculate_next = schedule.trigger.next
+                        while True:
+                            try:
+                                fire_time = calculate_next()
+                            except Exception:
+                                self.logger.exception(
+                                    "Error computing next fire time for schedule %r of "
+                                    "task %r – removing schedule",
+                                    schedule.id,
+                                    schedule.task_id,
                                 )
-                                jitter = timedelta(seconds=random.uniform(0, jitter_s))
-                                fire_time += jitter
+                                break
 
-                        schedule.last_fire_time = fire_time
-                        job = Job(
-                            task_id=schedule.task_id,
-                            args=schedule.args,
-                            kwargs=schedule.kwargs,
-                            schedule_id=schedule.id,
-                            scheduled_fire_time=fire_time,
-                            jitter=jitter,
-                            start_deadline=schedule.next_deadline,
-                            tags=schedule.tags,
-                            result_expiration_time=timedelta(minutes=15),
+                            # Stop if the calculated fire time is in the future
+                            if fire_time is None or fire_time > now:
+                                schedule.next_fire_time = fire_time
+                                break
+
+                            # Only keep all the fire times if coalesce policy = "all"
+                            if schedule.coalesce is CoalescePolicy.all:
+                                fire_times.append(fire_time)
+                            elif schedule.coalesce is CoalescePolicy.latest:
+                                fire_times[0] = fire_time
+
+                        # Add one or more jobs to the job queue
+                        max_jitter = (
+                            schedule.max_jitter.total_seconds()
+                            if schedule.max_jitter
+                            else 0
                         )
-                        await self.data_store.add_job(job)
+                        for i, fire_time in enumerate(fire_times):
+                            # Calculate a jitter if max_jitter > 0
+                            jitter = _zero_timedelta
+                            if max_jitter:
+                                if i + 1 < len(fire_times):
+                                    next_fire_time = fire_times[i + 1]
+                                else:
+                                    next_fire_time = schedule.next_fire_time
 
-                # Update the schedules (and release the scheduler's claim on them)
-                await self.data_store.release_schedules(self.identity, schedules)
+                                if next_fire_time is not None:
+                                    # Jitter must never be so high that it would cause a
+                                    # fire time to equal or exceed the next fire time
+                                    jitter_s = min(
+                                        [
+                                            max_jitter,
+                                            (
+                                                    next_fire_time
+                                                    - fire_time
+                                                    - _microsecond_delta
+                                            ).total_seconds(),
+                                        ]
+                                    )
+                                    jitter = timedelta(seconds=random.uniform(0, jitter_s))
+                                    fire_time += jitter
+
+                            schedule.last_fire_time = fire_time
+                            job = Job(
+                                task_id=schedule.task_id,
+                                args=schedule.args,
+                                kwargs=schedule.kwargs,
+                                schedule_id=schedule.id,
+                                scheduled_fire_time=fire_time,
+                                jitter=jitter,
+                                start_deadline=schedule.next_deadline,
+                                tags=schedule.tags,
+                                result_expiration_time=timedelta(minutes=15),
+                            )
+                            await self.data_store.add_job(job)
+                finally:
+                    # Update the schedules (and release the scheduler's claim on them)
+                    await self.data_store.release_schedules(self.identity, schedules)
 
                 # If we received fewer schedules than the maximum amount, sleep
                 # until the next schedule is due or the scheduler is explicitly
