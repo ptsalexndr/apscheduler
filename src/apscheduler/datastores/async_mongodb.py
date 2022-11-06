@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import operator
 from collections import defaultdict
 from contextlib import AsyncExitStack
@@ -8,15 +9,14 @@ from typing import Any, Callable, ClassVar, Iterable, Type, Tuple
 from uuid import UUID
 
 import attrs
-from pymongo.errors import ConnectionFailure, DuplicateKeyError
-from pymongo import ASCENDING, DeleteOne, UpdateOne
-from anyio import to_thread
 from attrs.validators import instance_of
 from bson import CodecOptions, UuidRepresentation
 from bson.codec_options import TypeEncoder, TypeRegistry
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorCollection
+from pymongo import ASCENDING, DeleteOne, UpdateOne
+from pymongo.errors import ConnectionFailure, DuplicateKeyError
 
-
+from .base import BaseExternalDataStore
 from .._enums import CoalescePolicy, ConflictPolicy, JobOutcome
 from .._events import (
     DataStoreEvent,
@@ -37,7 +37,6 @@ from .._exceptions import (
 )
 from .._structures import Job, JobResult, Schedule, Task
 from ..abc import EventBroker
-from .base import BaseExternalDataStore
 
 
 class CustomEncoder(TypeEncoder):
@@ -122,7 +121,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
             await self._jobs_results.create_index("expires_at", session=session)
 
     async def start(
-        self, exit_stack: AsyncExitStack, event_broker: EventBroker
+            self, exit_stack: AsyncExitStack, event_broker: EventBroker
     ) -> None:
         await super().start(exit_stack, event_broker)
         server_info = await self.client.server_info()
@@ -181,7 +180,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
             with attempt:
                 tasks: list[Task] = []
                 async for document in self._tasks.find(
-                    projection=self._task_attrs, sort=[("_id", ASCENDING)]
+                        projection=self._task_attrs, sort=[("_id", ASCENDING)]
                 ):
                     document["id"] = document.pop("_id")
                     tasks.append(Task.unmarshal(self.serializer, document))
@@ -208,7 +207,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
         return schedules
 
     async def add_schedule(
-        self, schedule: Schedule, conflict_policy: ConflictPolicy
+            self, schedule: Schedule, conflict_policy: ConflictPolicy
     ) -> None:
         event: DataStoreEvent
         document = schedule.marshal(self.serializer)
@@ -295,7 +294,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
         return schedules
 
     async def release_schedules(
-        self, scheduler_id: str, schedules: list[Schedule]
+            self, scheduler_id: str, schedules: list[Schedule]
     ) -> None:
         updated_schedules: list[tuple[str, datetime]] = []
         finished_schedule_ids: list[str] = []
@@ -478,7 +477,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
         return acquired_jobs
 
     async def release_job(
-        self, worker_id: str, task_id: str, result: JobResult
+            self, worker_id: str, task_id: str, result: JobResult
     ) -> None:
         async for attempt in self._retry():
             with attempt:
@@ -487,8 +486,12 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
                     if result.expires_at > result.finished_at:
                         document = result.marshal(self.serializer)
                         document["_id"] = document.pop("job_id")
-                        await self._jobs_results.insert_one(document, session=session)
-
+                        try:
+                            await self._jobs_results.insert_one(document, session=session)
+                        except DuplicateKeyError as exc:
+                            logging.exception("Could not insert document %s into jobs_result collection "
+                                              "as a document with the same id was already present",
+                                              document, exc_info=exc)
                     # Decrement the running jobs counter
                     await self._tasks.find_one_and_update(
                         {"_id": task_id}, {"$inc": {"running_jobs": -1}}, session=session
