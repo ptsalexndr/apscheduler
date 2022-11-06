@@ -492,13 +492,17 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
                             logging.exception("Could not insert document %s into jobs_result collection "
                                               "as a document with the same id was already present",
                                               document, exc_info=exc)
-                    # Decrement the running jobs counter
-                    await self._tasks.find_one_and_update(
-                        {"_id": task_id}, {"$inc": {"running_jobs": -1}}, session=session
-                    )
 
                     # Delete the job
-                    await self._jobs.delete_one({"_id": result.job_id}, session=session)
+                    delete_result = await self._jobs.delete_one({"_id": result.job_id}, session=session)
+                    if delete_result.deleted_count > 0:
+                        # Decrement the running jobs counter if job could be deleted
+                        await self._tasks.find_one_and_update(
+                            {"_id": task_id}, {"$inc": {"running_jobs": -delete_result}}, session=session
+                        )
+                    else:
+                        logging.error("Could not delete job with id %s, as it was not "
+                                      "found in jobs collection", result.job_id)
 
     async def get_job_result(self, job_id: UUID) -> JobResult | None:
         async for attempt in self._retry():
@@ -508,5 +512,4 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
         if document:
             document["job_id"] = document.pop("_id")
             return JobResult.unmarshal(self.serializer, document)
-        else:
-            return None
+        return None

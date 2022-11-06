@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import platform
 import random
@@ -783,4 +784,8 @@ class AsyncScheduler:
             finally:
                 current_job.reset(token)
         finally:
-            self._running_jobs.remove(job.id)
+            try:
+                self._running_jobs.remove(job.id)
+            except KeyError:
+                logging.error("Could not remove job with id %s from _running_jobs "
+                              "as it did not exist in set", job.id)
