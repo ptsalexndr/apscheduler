@@ -741,6 +741,7 @@ class AsyncScheduler:
 
             token = current_job.set(JobInfo.from_job(job))
             try:
+                self.logger.info("Running Job %s", job.id)
                 retval = await job_executor.run_job(func, job)
             except get_cancelled_exc_class():
                 self.logger.info("Job %s was cancelled", job.id)
