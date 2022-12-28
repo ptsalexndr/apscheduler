@@ -219,7 +219,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
         except DuplicateKeyError:
             if conflict_policy is ConflictPolicy.exception:
                 raise ConflictingIdError(schedule.id) from None
-            elif conflict_policy is ConflictPolicy.replace:
+            if conflict_policy is ConflictPolicy.replace:
                 async for attempt in self._retry():
                     with attempt:
                         await self._schedules.replace_one(
@@ -308,7 +308,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
                     serialized_trigger = self.serializer.serialize(schedule.trigger)
                 except SerializationError:
                     self._logger.exception(
-                        "Error serializing schedule %r – " "removing from data store",
+                        "Error serializing schedule %r – removing from data store",
                         schedule.id,
                     )
                     requests.append(DeleteOne(filters))
@@ -440,7 +440,7 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
                         slots_left = job_slots_left.get(job.task_id)
                         if slots_left == 0:
                             continue
-                        elif slots_left is not None:
+                        if slots_left is not None:
                             job_slots_left[job.task_id] -= 1
 
                         acquired_jobs.append(job)

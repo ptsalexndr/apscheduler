@@ -99,11 +99,14 @@ skip_gitignore = true
 profile = "black"
 
 [tool.flake8]
-max-line-length = 88
+max-line-length = 120
 
 [tool.mypy]
 python_version = "3.10"
 ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+disable_error_code = ["no-any-return", "missing-imports"]
 
 [tool.tox]
 legacy_tox_ini = """
@@ -129,3 +132,72 @@ usedevelop = true
 extras = doc
 commands = sphinx-build docs build/sphinx
 """
+
+[tool.pylint.main]
+jobs = 2
+
+[tool.pylint.design]
+# Maximum number of arguments for function / method.
+max-args = 10
+# Maximum number of attributes for a class (see R0902).
+max-attributes = 10
+# Maximum number of branch for function / method body.
+max-branches = 12
+# Maximum number of locals for function / method body.
+max-locals = 15
+# Maximum number of public methods for a class (see R0904).
+max-public-methods = 20
+# Maximum number of return / yield for function / method body.
+max-returns = 6
+# Maximum number of statements in function / method body.
+max-statements = 50
+# Minimum number of public methods for a class (see R0903).
+min-public-methods = 2
+
+[tool.pylint.format]
+# Maximum number of characters on a single line.
+max-line-length = 120
+
+[tool.pylint.messages_control]
+# Only show warnings with the listed confidence levels. Leave empty to show
+# all. Valid levels: HIGH, CONTROL_FLOW, INFERENCE, INFERENCE_FAILURE,
+# UNDEFINED.
+confidence = [
+    "HIGH",
+    "CONTROL_FLOW",
+    "INFERENCE",
+    "INFERENCE_FAILURE",
+    "UNDEFINED"
+]
+
+# Disable the message, report, category or checker with the given id(s). You
+# can either give multiple identifiers separated by comma (,) or put this
+# option multiple times (only on the command line, not in the configuration
+# file where it should appear only once). You can also use "--disable=all" to
+# disable everything first and then re-enable specific checks. For example, if
+# you want to run only the similarities checker, you can use "--disable=all
+# --enable=similarities". If you want to run only the classes checker, but have
+# no Warning level messages displayed, use "--disable=all --enable=classes
+# --disable=W".
+disable = [
+    "raw-checker-failed",
+    "bad-inline-option",
+    "locally-disabled",
+    "file-ignored",
+    "suppressed-message",
+    "useless-suppression",
+    "deprecated-pragma",
+    "use-symbolic-message-instead",
+    "missing-module-docstring",
+    "missing-function-docstring",
+    "missing-class-docstring",
+    "W0511",
+    "too-few-public-methods",
+    "relative-beyond-top-level",
+    "pointless-string-statement",
+    "too-many-statements",
+    "trailing-whitespace"
+]
+
+# Minimum lines number of a similarity.
+min-similarity-lines = 5
