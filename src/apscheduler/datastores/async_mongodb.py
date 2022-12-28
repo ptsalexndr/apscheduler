@@ -453,11 +453,12 @@ class AsyncMongoDBDataStore(BaseExternalDataStore):
                             acquired_until = datetime.fromtimestamp(
                                 now.timestamp() + lock_expiration_delay, timezone.utc
                             )
-
+                            started_at = datetime.fromtimestamp(now.timestamp(), timezone.utc)
                             await self._jobs.find_one_and_update(
                                 {"_id": job.id},
                                 {"$set": {"acquired_by": worker_id,
-                                          "acquired_until": acquired_until}},
+                                          "acquired_until": acquired_until,
+                                          "started_at": started_at}},
                                 session=session)
 
                         # Increment the running job counters on each task
