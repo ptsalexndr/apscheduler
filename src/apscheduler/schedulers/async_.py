@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import platform
@@ -715,7 +716,10 @@ class AsyncScheduler:
                                               "These tasks will be skipped from now on until the "
                                               "service is restarted.", job.task_id)
                             self._ignored_tasks.append(job.task_id)
-                await wakeup_event.wait()
+                try:
+                    await asyncio.wait_for(wakeup_event.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    self.logger.debug("Did not receive wakeup_event in 5 seconds, looking for jobs...")
                 wakeup_event = anyio.Event()
 
     async def _run_job(self, job: Job, func: Callable, executor: str) -> None:
