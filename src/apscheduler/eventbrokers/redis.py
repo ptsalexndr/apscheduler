@@ -87,9 +87,10 @@ class RedisEventBroker(BaseExternalEventBroker):
                             ignore_subscribe_messages=True,
                             timeout=self.stop_check_interval,
                         )
-
+                self._logger.debug("Received msg from event broker")
                 if msg and isinstance(msg["data"], bytes):
                     event = self.reconstitute_event(msg["data"])
+                    self._logger.debug("Received event from event broker (REDIS): %s", event)
                     if event is not None:
                         await self.publish_local(event)
             except Exception as exc:
@@ -103,6 +104,7 @@ class RedisEventBroker(BaseExternalEventBroker):
                 raise
 
     async def publish(self, event: Event) -> None:
+        self._logger.debug("Publishing event to event broker (REDIS): %s", event)
         notification = self.generate_notification(event)
         async for attempt in self._retry():
             with attempt:
