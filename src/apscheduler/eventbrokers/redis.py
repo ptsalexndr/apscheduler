@@ -87,7 +87,7 @@ class RedisEventBroker(BaseExternalEventBroker):
                             ignore_subscribe_messages=True,
                             timeout=self.stop_check_interval,
                         )
-                self._logger.debug("Received msg from event broker")
+                self._logger.debug("Received msg from event broker: %s", msg)
                 if msg and isinstance(msg["data"], bytes):
                     event = self.reconstitute_event(msg["data"])
                     self._logger.debug("Received event from event broker (REDIS): %s", event)

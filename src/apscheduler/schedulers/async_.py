@@ -717,9 +717,9 @@ class AsyncScheduler:
                                               "service is restarted.", job.task_id)
                             self._ignored_tasks.append(job.task_id)
                 try:
-                    await asyncio.wait_for(wakeup_event.wait(), timeout=5)
+                    await asyncio.wait_for(wakeup_event.wait(), timeout=60)
                 except asyncio.TimeoutError:
-                    self.logger.debug("Did not receive wakeup_event in 5 seconds, looking for jobs...")
+                    self.logger.debug("Did not receive wakeup_event in 60 seconds, looking for jobs...")
                 wakeup_event = anyio.Event()
 
     async def _run_job(self, job: Job, func: Callable, executor: str) -> None:
